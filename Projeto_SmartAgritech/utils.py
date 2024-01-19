@@ -1,19 +1,43 @@
 import pandas as pd
-import os
 
-# Função para Verificar o stock
-def verificar_stock(materiais_df):
-    # Crie uma cópia do DataFrame para evitar SettingWithCopyWarning
-    materiais_sem_stock = materiais_df.copy()
 
-    # Adicionar a coluna 'Diferencial_Ordem' com a diferença entre a Quantidade_Requerida e a Quantidade_Stock
-    materiais_sem_stock['Diferencial_Ordem'] = materiais_sem_stock['Quantidade_Stock'] - materiais_sem_stock['Quantidade_Requerida']
+#Função Quantidade precisa
+def calcular_quantidade_precisa():
+    # Leitura dos dados das folhas do Excel
+    quantidades_df = pd.read_excel('Base_Dados_SmartAgritech.xlsx', sheet_name='Quantidades')
 
-    # Adicionar a coluna 'Compra_Necessaria' que indica se é necessário comprar (True/False)
-    materiais_sem_stock['Compra_Necessaria'] = materiais_sem_stock['Diferencial_Ordem'] < 0
+    # Solicitar a quantidade a ser produzida
+    quantidade_produzida = int(input("Digite a quantidade a ser produzida: "))
 
-    return materiais_sem_stock
+    # Calcular a Quantidade_Necessaria
+    quantidades_df['Quantidade_Precisa'] = quantidade_produzida * quantidades_df['Quantidade_Necessaria']
     
+
+    # Exibir os resultados
+    print("\nQuantidade Produzida:", quantidade_produzida)
+    print("Quantidade Necessária:")
+    print(quantidades_df[['Codigo', 'Quantidade_Precisa']])
+
+    return quantidades_df, quantidade_produzida
+
+
+#Função verificar Stock
+def verificar_stock(quantidades_df):
+    # Verificar se a coluna 'Quantidade_Stock' existe no DataFrame de quantidades
+    if 'Quantidade_Stock' not in quantidades_df.columns:
+        print("Erro: Coluna 'Quantidade_Stock' não encontrada no DataFrame de Quantidades.")
+        return None
+
+    # Verificar se a quantidade em estoque é suficiente
+    quantidades_df['Com_Stock'] = quantidades_df['Quantidade_Precisa'] <= quantidades_df['Quantidade_Stock']
+
+    # Exibir os resultados
+    print("\nTabela Quantidades com Verificação de Stock:")
+    print(quantidades_df[['Codigo', 'Quantidade_Produzida', 'Quantidade_Necessaria', 'Quantidade_Precisa', 'Com_Stock']])
+
+    return quantidades_df['Com_Stock']
+
+
 
 # Função para atualizar o stock
 def atualizar_stock(materiais_df):
@@ -24,43 +48,36 @@ def atualizar_stock(materiais_df):
             if row['Quantidade_Stock'] < row['Quantidade_Requerida']
             else (row['Quantidade_Stock'] + row['Quantidade_Comprada']), axis=1)
 
-        # Zerar a Quantidade_Comprada após a atualização
-        materiais_df['Quantidade_Comprada'] = 0
-
-        # Preencher NaN em Quantidade_Stock com zero para facilitar os cálculos
-        materiais_df['Quantidade_Stock'] = materiais_df['Quantidade_Stock'].fillna(0)
+        # Remover a coluna temporária Quantidade_Requerida, pois não é mais necessária na base de dados
+        materiais_df = materiais_df.drop(columns=['Quantidade_Requerida'])
+        
+        # Remover a coluna temporária Quantidade_Comprada, pois não é mais necessária na base de dados
+        materiais_df = materiais_df.drop(columns=['Quantidade_Comprada'])
 
         # Salvar as alterações no Excel
         materiais_df.to_excel('Base_Dados_SmartAgritech.xlsx', sheet_name='Materiais', index=False)
     except Exception as e:
         print(f"Erro ao atualizar stock: {e}")
 
-  
 # Função para Registar as Compras
-def registrar_compras(materiais_df):
+def registrar_compras(materiais_df, materiais_sem_stock):
     try:
-        for index, row in materiais_df.iterrows():
-            quantidade_comprada = int(input(f"Quantidade comprada para {row['Descricao_Material']} (Código: {row['Codigo']}): "))
+        # Filtrar apenas os materiais que precisam ser comprados
+        materiais_compra_necessaria = materiais_df[materiais_sem_stock]
 
-            # Atualizar a Quantidade_Stock
-            if row['Quantidade_Stock'] < row['Quantidade_Requerida']:
-                # Se a quantidade em estoque for menor que a requerida, adicione a quantidade comprada ao estoque
-                materiais_df.at[index, 'Quantidade_Stock'] += quantidade_comprada
-            else:
-                # Se a quantidade em estoque for suficiente, subtrai a quantidade requerida do estoque
-                if row['Quantidade_Stock'] >= row['Quantidade_Requerida']:
-                    materiais_df.at[index, 'Quantidade_Stock'] -= row['Quantidade_Requerida']
-                else:
-                    # Se a quantidade em estoque for menor que a requerida, adiciona a quantidade comprada ao estoque
-                    materiais_df.at[index, 'Quantidade_Stock'] += quantidade_comprada
-                    materiais_df.at[index, 'Quantidade_Comprada'] = quantidade_comprada
-
-        # Salvar as alterações no Excel
-        materiais_df.to_excel('Base_Dados_SmartAgritech.xlsx', sheet_name='Materiais', index=False)
+        for index, row in materiais_compra_necessaria.iterrows():
+            # Solicitar quantidade comprada ao usuário
+            quantidade_comprada = float(input(f"Digite a quantidade a ser comprada para {row['Descricao_Material']}: "))
+            
+            # Atualizar a quantidade comprada no DataFrame
+            materiais_df.at[index, 'Quantidade_Comprada'] = quantidade_comprada
+    
+        return materiais_df
     except Exception as e:
         print(f"Erro ao registrar compras: {e}")
+        return materiais_df
 
-    
+
 # Função para confirmar materiais opcionais
 def confirmar_opcionais(materiais_df):
     try:
@@ -75,9 +92,11 @@ def confirmar_opcionais(materiais_df):
 
                 # Se o usuário confirmar, atualizar a quantidade necessária
                 if confirmacao.upper() == 'S':
-                    materiais_df.loc[materiais_df['Codigo'] == codigo_material, 'Quantidade_Requerida'] += quantidade_necessaria
+                    materiais_df.at[index, 'Quantidade_Requerida'] += quantidade_necessaria
 
         # Salvar as alterações no Excel
         materiais_df.to_excel('Base_Dados_SmartAgritech.xlsx', sheet_name='Materiais', index=False)
+        return materiais_df
     except Exception as e:
         print(f"Erro ao confirmar opcionais: {e}")
+        return materiais_df
