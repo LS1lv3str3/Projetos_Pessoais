@@ -5,6 +5,7 @@ import pandas as pd
 def calcular_quantidade_precisa():
     # Leitura dos dados das folhas do Excel
     quantidades_df = pd.read_excel('Base_Dados_SmartAgritech.xlsx', sheet_name='Quantidades')
+    materiais_df = pd.read_excel('Base_Dados_SmartAgritech.xlsx', sheet_name='Materiais')
 
     # Solicitar a quantidade a ser produzida
     quantidade_produzida = int(input("Digite a quantidade a ser produzida: "))
@@ -12,30 +13,63 @@ def calcular_quantidade_precisa():
     # Calcular a Quantidade_Necessaria
     quantidades_df['Quantidade_Precisa'] = quantidade_produzida * quantidades_df['Quantidade_Necessaria']
     
+    # Adiciona a descrição de cada código da sheet 'Materiais'
+    quantidades_df = pd.merge(quantidades_df, materiais_df[['Codigo', 'Descricao_Material']], on='Codigo')
 
     # Exibir os resultados
     print("\nQuantidade Produzida:", quantidade_produzida)
     print("Quantidade Necessária:")
-    print(quantidades_df[['Codigo', 'Quantidade_Precisa']])
+    print(quantidades_df[['Codigo', 'Descricao_Material', 'Quantidade_Precisa']])
 
     return quantidades_df, quantidade_produzida
 
 
 #Função verificar Stock
 def verificar_stock(quantidades_df):
-    # Verificar se a coluna 'Quantidade_Stock' existe no DataFrame de quantidades
-    if 'Quantidade_Stock' not in quantidades_df.columns:
-        print("Erro: Coluna 'Quantidade_Stock' não encontrada no DataFrame de Quantidades.")
-        return None
-
+    
     # Verificar se a quantidade em estoque é suficiente
-    quantidades_df['Com_Stock'] = quantidades_df['Quantidade_Precisa'] <= quantidades_df['Quantidade_Stock']
+    quantidades_df['Materiais_Com_Stock'] = quantidades_df['Quantidade_Stock'] >= quantidades_df['Quantidade_Necessaria']
+        
+      
+    if quantidades_df['Materiais_Com_Stock'].any():
+        quantidades_df['Quantidade_Stock_Updated'] = quantidades_df['Quantidade_Stock'] - quantidades_df['Quantidade_Precisa']
+        resultados_df = quantidades_df[['Codigo', 'Descricao_Material', 'Quantidade_Necessaria', 'Quantidade_Precisa', 'Materiais_Com_Stock', 'Quantidade_Stock_Updated' ]]
+        resultados_df['Codigo'] = resultados_df['Codigo'].astype(int)
+        print("\nTabela Quantidades com Verificação de Stock:")
+        print(resultados_df)
+    
+    else:
+        quantidades_df['Quantidade_Stock_Updated'] = quantidades_df['Quantidade_Stock'] - quantidades_df['Quantidade_Precisa'] #Resultado negativo!!!!!
+        resultados_df = quantidades_df[['Codigo', 'Descricao_Material', 'Quantidade_Necessaria', 'Quantidade_Precisa', 'Materiais_Com_Stock', 'Quantidade_Stock_Updated' ]]
+        resultados_df['Codigo'] = resultados_df['Codigo'].astype(int)
+        print("\nTabela Quantidades com Verificação de Stock:")
+        print(resultados_df)
 
-    # Exibir os resultados
-    print("\nTabela Quantidades com Verificação de Stock:")
-    print(quantidades_df[['Codigo', 'Quantidade_Produzida', 'Quantidade_Necessaria', 'Quantidade_Precisa', 'Com_Stock']])
+    return resultados_df
 
-    return quantidades_df['Com_Stock']
+
+# Função para Registar as Compras
+def registrar_compras(quantidades_df):
+    materiais_sem_stock = quantidades_df[quantidades_df['Quantidade_Stock_Updated'] < 0]
+    
+    # Verificar se há materiais com estoque negativo
+    if not materiais_sem_stock.empty:
+        
+        # Exibir os materiais com estoque negativo
+        print("\nMateriais a necessitar de compra:\n")
+        materiais_sem_stock['Codigo'] = materiais_sem_stock['Codigo'].astype(int)
+        print(materiais_sem_stock[['Codigo', 'Descricao_Material', 'Quantidade_Stock_Updated']])
+        
+        for index, row in materiais_sem_stock.iterrows():
+            
+            if row['Quantidade_Stock'] < row['Quantidade_Necessaria']:        
+                quantidade_comprada = int(input(f"Digite a quantidade comprada para {row['Descricao_Material']} (Código {row['Codigo']}): "))
+
+                print(quantidade_comprada)
+
+
+    
+    
 
 
 
@@ -59,23 +93,7 @@ def atualizar_stock(materiais_df):
     except Exception as e:
         print(f"Erro ao atualizar stock: {e}")
 
-# Função para Registar as Compras
-def registrar_compras(materiais_df, materiais_sem_stock):
-    try:
-        # Filtrar apenas os materiais que precisam ser comprados
-        materiais_compra_necessaria = materiais_df[materiais_sem_stock]
 
-        for index, row in materiais_compra_necessaria.iterrows():
-            # Solicitar quantidade comprada ao usuário
-            quantidade_comprada = float(input(f"Digite a quantidade a ser comprada para {row['Descricao_Material']}: "))
-            
-            # Atualizar a quantidade comprada no DataFrame
-            materiais_df.at[index, 'Quantidade_Comprada'] = quantidade_comprada
-    
-        return materiais_df
-    except Exception as e:
-        print(f"Erro ao registrar compras: {e}")
-        return materiais_df
 
 
 # Função para confirmar materiais opcionais
